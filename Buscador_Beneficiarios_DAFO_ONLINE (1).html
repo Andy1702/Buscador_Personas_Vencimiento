@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Buscador de Beneficiarios — DAFO</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6f8; color: #1a1a1a; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.subtitle { color: #666; font-size: 13px; margin-bottom: 16px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+.tab { padding: 10px 18px; cursor: pointer; background: #e8eaed; border: none; border-radius: 6px 6px 0 0; font-size: 14px; font-weight: 600; color: #555; }
+.tab.active { background: #2c5aa0; color: white; }
+.subtabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.subtab { padding: 6px 14px; cursor: pointer; background: #fff; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.subtab.active { background: #4a7bc8; color: white; border-color: #4a7bc8; }
+.panel { display: none; }
+.panel.active { display: block; }
+.descripcion { background: #eef3fb; border-left: 4px solid #2c5aa0; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; border-radius: 4px; }
+.descripcion strong { color: #2c5aa0; }
+.search-box { background: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 14px; }
+.search-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-bottom: 10px; max-width: 700px; }
+.search-grid input { padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 100%; }
+.search-grid input:focus { border-color: #2c5aa0; outline: none; box-shadow: 0 0 0 2px rgba(44,90,160,.15); }
+th.col-selected { background: #28a745 !important; color: white !important; }
+.copy-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.copy-bar button { padding: 5px 12px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #f8f9fa; }
+.copy-bar button:hover { background: #e2e6ea; }
+.btn { padding: 9px 18px; background: #2c5aa0; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.btn:hover { background: #224780; }
+.btn-clear { background: #888; margin-left: 6px; }
+.btn-clear:hover { background: #666; }
+.results { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th { background: #2c5aa0; color: white; padding: 8px 6px; text-align: left; font-weight: 600; position: sticky; top: 0; cursor: pointer; user-select: none; }
+th:hover { background: #224780; }
+td { padding: 6px; border: 1px solid #ddd; vertical-align: middle; }
+tr.group-start td { border-top: 2px solid #2c5aa0; }
+.col-buscado { background: #eef3fb; font-weight: 600; }
+.alert { background: #ffd6d6 !important; color: #8b0000; font-weight: 600; }
+.empty-msg { padding: 30px; text-align: center; color: #888; }
+.stats { font-size: 12px; color: #666; margin: 8px 0; }
+.col-tipo { background: #f7f7f7; font-style: italic; }
+.col-persona { background: #f7f7f7; }
+.meta { font-size: 11px; color: #888; margin-top: 6px; }
+.col-instructions { background: #fffbe6; border-left: 3px solid #f5b400; padding: 8px 12px; margin: 8px 0; font-size: 12px; color: #5a4500; border-radius: 3px; }
+
+.loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(245,246,248,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; }
+.loading-overlay .spinner { width: 40px; height: 40px; border: 4px solid #ddd; border-top-color: #2c5aa0; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-overlay p { margin-top: 16px; font-size: 15px; color: #555; }
+.loading-overlay .error { color: #c00; font-weight: 600; }
+.data-info { font-size: 11px; color: #888; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="loading-msg">Cargando base de datos desde Google Drive...</p>
+</div>
+
+<h1>Buscador de Beneficiarios — Estado de Compromisos</h1>
+<div class="subtitle">DAFO · Estímulos económicos al cine peruano · Búsqueda de personas naturales y jurídicas vinculadas a proyectos pasados</div>
+<div class="data-info" id="data-info"></div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="naturales">Personas Naturales</button>
+  <button class="tab" data-tab="juridicas">Personas Jurídicas</button>
+  <button class="tab" data-tab="proyectos">Proyectos</button>
+</div>
+
+<!-- ============ PANEL PERSONAS NATURALES ============ -->
+<div class="panel active" id="panel-naturales">
+  <div class="descripcion">
+    <strong>¿Qué hace esta búsqueda?</strong> Busca el nombre de una persona natural en toda la base y devuelve <em>todos</em> los proyectos en los que aparece, sin importar el rol que haya cumplido. Una persona puede figurar como Beneficiario, Representante Legal, Director de la Obra o Responsable — y a veces ocupa varios de estos roles en el mismo proyecto. Cada proyecto encontrado aparece como una sola fila, con todos sus roles agrupados en la columna "Tipo de relación". El nombre que se muestra es el que figura en la base original, no como tú lo escribiste. Las celdas en rojo señalan proyectos en VENCIMIENTO o INCUMPLIMIENTO.
+  </div>
+  <div class="search-box">
+    <div class="search-grid">
+      <input type="text" class="q-nat" placeholder="Nombre 1 (ej: Juan Pérez)">
+      <input type="text" class="q-nat" placeholder="Nombre 2">
+      <input type="text" class="q-nat" placeholder="Nombre 3">
+      <input type="text" class="q-nat" placeholder="Nombre 4">
+      <input type="text" class="q-nat" placeholder="Nombre 5">
+      <input type="text" class="q-nat" placeholder="Nombre 6">
+      <input type="text" class="q-nat" placeholder="Nombre 7">
+      <input type="text" class="q-nat" placeholder="Nombre 8">
+      <input type="text" class="q-nat" placeholder="Nombre 9">
+      <input type="text" class="q-nat" placeholder="Nombre 10">
+    </div>
+    <button class="btn" onclick="buscarNaturales()">Buscar</button>
+    <button class="btn btn-clear" onclick="limpiar('nat')">Limpiar</button>
+    <div class="meta">Match por nombre: ignora tildes y mayúsculas, mínimo 3 palabras coincidentes. También puedes buscar por DNI (8 dígitos) o RUC (11 dígitos).</div>
+  </div>
+  <div class="col-instructions">💡 <strong>Copiar datos:</strong> Haz clic en los encabezados de columna para seleccionarlos (se ponen verdes). Puedes seleccionar varias columnas. Luego usa los botones de copiado.</div>
+  <div class="copy-bar">
+    <button onclick="copySelectedColumns('results-nat')">📋 Copiar columnas seleccionadas</button>
+    <button onclick="copyFullTable('results-nat')">📊 Copiar toda la tabla</button>
+    <button onclick="clearColumnSelection('results-nat')">✕ Deseleccionar</button>
+  </div>
+  <div class="stats" id="stats-nat"></div>
+  <div class="results" id="results-nat"><div class="empty-msg">Ingresa uno o más nombres y presiona Buscar.</div></div>
+</div>
+
+<!-- ============ PANEL PERSONAS JURÍDICAS ============ -->
+<div class="panel" id="panel-juridicas">
+  <div class="subtabs">
+    <button class="subtab active" data-subtab="directa">Búsqueda 1: Directa</button>
+    <button class="subtab" data-subtab="vinculada">Búsqueda 2: Por Persona Vinculada</button>
+  </div>
+
+  <div class="subpanel active" id="subpanel-directa">
+    <div class="descripcion">
+      <strong>¿Qué hace esta búsqueda?</strong> Busca la persona jurídica (empresa) directamente en la columna de Beneficiarios y devuelve todos los proyectos donde figura como tal. Es la búsqueda más simple: ¿esta empresa ha sido beneficiaria de algún estímulo y en qué estado están sus compromisos? Las celdas en rojo señalan proyectos en VENCIMIENTO o INCUMPLIMIENTO.
+    </div>
+    <div class="search-box">
+      <div class="search-grid">
+        <input type="text" class="q-jur-d" placeholder="Empresa 1">
+        <input type="text" class="q-jur-d" placeholder="Empresa 2">
+        <input type="text" class="q-jur-d" placeholder="Empresa 3">
+        <input type="text" class="q-jur-d" placeholder="Empresa 4">
+        <input type="text" class="q-jur-d" placeholder="Empresa 5">
+        <input type="text" class="q-jur-d" placeholder="Empresa 6">
+        <input type="text" class="q-jur-d" placeholder="Empresa 7">
+        <input type="text" class="q-jur-d" placeholder="Empresa 8">
+        <input type="text" class="q-jur-d" placeholder="Empresa 9">
+        <input type="text" class="q-jur-d" placeholder="Empresa 10">
+      </div>
+      <button class="btn" onclick="buscarJuridicasDirecta()">Buscar proyectos directos</button>
+      <button class="btn btn-clear" onclick="limpiar('jur-d')">Limpiar</button>
+      <div class="meta">Match por nombre: el texto buscado debe estar contenido en el nombre de la empresa. También puedes buscar por RUC (11 dígitos).</div>
+    </div>
+    <div class="col-instructions">💡 <strong>Copiar datos:</strong> Haz clic en los encabezados de columna para seleccionarlos (se ponen verdes). Luego usa los botones de copiado.</div>
+    <div class="copy-bar">
+      <button onclick="copySelectedColumns('results-jur-d')">📋 Copiar columnas seleccionadas</button>
+      <button onclick="copyFullTable('results-jur-d')">📊 Copiar toda la tabla</button>
+      <button onclick="clearColumnSelection('results-jur-d')">✕ Deseleccionar</button>
+    </div>
+    <div class="stats" id="stats-jur-d"></div>
+    <div class="results" id="results-jur-d"><div class="empty-msg">Ingresa uno o más nombres de empresa y presiona Buscar.</div></div>
+  </div>
+
+  <div class="subpanel" id="subpanel-vinculada" style="display:none">
+    <div class="descripcion">
+      <strong>¿Qué hace esta búsqueda?</strong> Esta es la búsqueda de <em>riesgo indirecto</em>. Funciona en dos pasos: <strong>(1)</strong> identifica todas las personas naturales (Representante Legal, Director, Responsable) que han trabajado en los proyectos donde la empresa buscada figura como beneficiaria. <strong>(2)</strong> Toma esas personas y las busca en TODA la base, devolviendo únicamente los proyectos en VENCIMIENTO o INCUMPLIMIENTO en los que han participado, incluyendo proyectos de OTRAS empresas. Sirve para detectar el caso típico: una empresa que nunca ha incumplido directamente, pero contrata a personas que sí han caído en falta con otras productoras. Cada fila es un proyecto en falta; la columna "Persona vinculada" indica a través de quién se llegó al hallazgo.
+    </div>
+    <div class="search-box">
+      <div class="search-grid">
+        <input type="text" class="q-jur-v" placeholder="Empresa 1">
+        <input type="text" class="q-jur-v" placeholder="Empresa 2">
+        <input type="text" class="q-jur-v" placeholder="Empresa 3">
+        <input type="text" class="q-jur-v" placeholder="Empresa 4">
+        <input type="text" class="q-jur-v" placeholder="Empresa 5">
+        <input type="text" class="q-jur-v" placeholder="Empresa 6">
+        <input type="text" class="q-jur-v" placeholder="Empresa 7">
+        <input type="text" class="q-jur-v" placeholder="Empresa 8">
+        <input type="text" class="q-jur-v" placeholder="Empresa 9">
+        <input type="text" class="q-jur-v" placeholder="Empresa 10">
+      </div>
+      <button class="btn" onclick="buscarJuridicasVinculada()">Buscar por personas vinculadas</button>
+      <button class="btn btn-clear" onclick="limpiar('jur-v')">Limpiar</button>
+    </div>
+    <div class="col-instructions">💡 <strong>Copiar datos:</strong> Haz clic en los encabezados de columna para seleccionarlos. Luego usa los botones de copiado.</div>
+    <div class="copy-bar">
+      <button onclick="copySelectedColumns('results-jur-v')">📋 Copiar columnas seleccionadas</button>
+      <button onclick="copyFullTable('results-jur-v')">📊 Copiar toda la tabla</button>
+      <button onclick="clearColumnSelection('results-jur-v')">✕ Deseleccionar</button>
+    </div>
+    <div class="stats" id="stats-jur-v"></div>
+    <div class="results" id="results-jur-v"><div class="empty-msg">Ingresa uno o más nombres de empresa y presiona Buscar.</div></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+let DATA = [];
+
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS9090R_q5D52__ec6zUFp-joR0gTaHx1_fXw2dJkWdnnbg-_JkW3bOYy1ZJrZZ5yqf5GAwano7-zSx/pub?output=csv';
+
+function csvRowToRecord(row) {
+  var s = function(v) { return (v == null || v === '#N/A' || v === '#REF!' || v === '#ERROR!') ? '' : String(v).trim(); };
+  return {
+    categoria:    s(row[0]),
+    anio:         s(row[1]),
+    beneficiario: s(row[2]),
+    titulo:       s(row[3]),
+    acta:         s(row[4]),
+    director:     s(row[5]),
+    rep_legal:    s(row[6]),
+    responsable:  s(row[7]),
+    dni_rl:       s(row[8]),
+    ruc_dir:      s(row[9]),
+    dni_dir:      s(row[10]),
+    dni_resp:     s(row[11]),
+    ruc_pj:       s(row[12]),
+    proceso:      s(row[13]),
+    estado:       s(row[14])
+  };
+}
+
+async function loadData() {
+  var overlay = document.getElementById('loading-overlay');
+  var msg = document.getElementById('loading-msg');
+  try {
+    msg.textContent = 'Conectando con Google Drive...';
+    var response = await fetch(CSV_URL);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    msg.textContent = 'Descargando datos...';
+    var csvText = await response.text();
+    msg.textContent = 'Procesando registros...';
+    var parsed = Papa.parse(csvText, { header: false, skipEmptyLines: true });
+    // Skip row 0 (header row) — only 1 header row now
+    var dataRows = parsed.data.slice(1);
+    DATA = dataRows
+      .filter(function(row) { return row.length >= 3 && row[2] && String(row[2]).trim().length > 0; })
+      .map(csvRowToRecord);
+    overlay.style.display = 'none';
+    document.getElementById('data-info').textContent =
+      '\u2713 Base de datos en línea — ' + DATA.length + ' registros cargados — Actualización automática desde Google Drive';
+  } catch (err) {
+    msg.innerHTML = '<span class="error">\u26A0 No se pudo cargar la base de datos</span><br><br>' +
+      'Posibles causas:<br>• Sin conexión a internet<br>• El archivo CSV no está publicado<br><br>' +
+      '<small>Error técnico: ' + err.message + '</small><br><br>' +
+      '<button onclick="loadData()" style="padding:8px 20px;cursor:pointer;font-size:14px;">Reintentar</button>';
+  }
+}
+
+loadData();
+
+// ---------- Normalización ----------
+
+function norm(s) {
+  if (!s) return '';
+  return s.toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function tokens(s) {
+  return norm(s).split(' ').filter(w => w.length >= 3);
+}
+function matchNombre(query, candidate) {
+  const qt = tokens(query);
+  const ct = tokens(candidate);
+  if (qt.length === 0 || ct.length === 0) return false;
+  const cset = new Set(ct);
+  const hits = qt.filter(w => cset.has(w)).length;
+  if (qt.length === 1) return hits >= 1 && ct.includes(qt[0]);
+  const minRequired = qt.length <= 2 ? 2 : 3;
+  return hits >= minRequired;
+}
+function matchEmpresa(query, candidate) {
+  const q = norm(query); const c = norm(candidate);
+  if (!q || !c) return false;
+  return c.includes(q);
+}
+function matchId(query, candidate) {
+  // Exact match on ID fields (DNI, RUC) — trimmed, digits only comparison
+  const q = query.replace(/\D/g,'').trim();
+  const c = (candidate || '').toString().replace(/\D/g,'').trim();
+  return q.length >= 7 && c.length >= 7 && q === c;
+}
+function matchIdMulti(query, multiVal) {
+  // multiVal may contain multiple IDs separated by spaces (e.g. "10064082928 10064082928")
+  if (!multiVal) return false;
+  const q = query.replace(/\D/g,'').trim();
+  if (q.length < 7) return false;
+  const parts = multiVal.toString().split(/\s+/);
+  return parts.some(p => p.replace(/\D/g,'') === q);
+}
+function isAlerta(proceso) {
+  const p = (proceso || '').toUpperCase();
+  return p === 'VENCIMIENTO' || p === 'INCUMPLIMIENTO';
+}
+function isRevision(proceso) {
+  return (proceso || '').toUpperCase() === 'REVISIÓN' || (proceso || '').toUpperCase() === 'REVISION';
+}
+function procesoCls(proceso) {
+  if (isAlerta(proceso)) return 'alert';
+  if (isRevision(proceso)) return 'warning';
+  return '';
+}
+
+// ─── Buscar por nombre de persona natural ───────────────────────────────────
+function findProyectosByPersona(query) {
+  // Returns a Map: canonicalName -> [{row, roles}]
+  const personMap = new Map();
+  const isIdQuery = query.replace(/\D/g,'').length >= 7 && /^\d[\d\s]+$/.test(query.trim());
+  for (let i = 0; i < DATA.length; i++) {
+    const r = DATA[i];
+    const matches = [];
+    if (isIdQuery) {
+      if (matchId(query, r.dni_rl))       matches.push({tipo:'Representante Legal', nombre:r.rep_legal});
+      if (matchIdMulti(query, r.ruc_dir)) matches.push({tipo:'Director de la Obra', nombre:r.director});
+      if (matchIdMulti(query, r.dni_dir)) matches.push({tipo:'Director de la Obra', nombre:r.director});
+      if (matchId(query, r.dni_resp))     matches.push({tipo:'Responsable', nombre:r.responsable});
+    } else {
+      if (matchNombre(query, r.beneficiario)) matches.push({tipo:'Beneficiario', nombre:r.beneficiario});
+      if (matchNombre(query, r.rep_legal))    matches.push({tipo:'Representante Legal', nombre:r.rep_legal});
+      if (matchNombre(query, r.director))     matches.push({tipo:'Director de la Obra', nombre:r.director});
+      if (matchNombre(query, r.responsable))  matches.push({tipo:'Responsable', nombre:r.responsable});
+    }
+    if (matches.length === 0) continue;
+    // Group each match by its actual canonical name (the name found in the DB)
+    const byName = new Map();
+    for (const m of matches) {
+      const key = (m.nombre || '').trim();
+      if (!key) continue;
+      if (!byName.has(key)) byName.set(key, []);
+      if (!byName.get(key).some(x => x === m.tipo)) byName.get(key).push(m.tipo);
+    }
+    for (const [nombre, roles] of byName) {
+      if (!personMap.has(nombre)) personMap.set(nombre, []);
+      // Avoid duplicating same row for same person
+      const existing = personMap.get(nombre);
+      if (!existing.some(e => e.rowIdx === i)) {
+        existing.push({rowIdx: i, row: r, roles: roles});
+      }
+    }
+  }
+  return personMap;
+}
+
+// ─── Buscar por empresa (directa) ───────────────────────────────────────────
+function findProyectosByEmpresa(query) {
+  const out = [];
+  const isIdQuery = /^\d{11}$/.test(query.replace(/\s/g,''));
+  for (const r of DATA) {
+    if (isIdQuery) {
+      if (matchId(query, r.ruc_pj)) out.push({row: r, nombreCanonico: r.beneficiario});
+    } else {
+      if (matchEmpresa(query, r.beneficiario)) out.push({row: r, nombreCanonico: r.beneficiario});
+    }
+  }
+  return out;
+}
+
+// ─── Buscar por título de proyecto ──────────────────────────────────────────
+function findProyectosByTitulo(query) {
+  const q = norm(query);
+  if (!q || q.length < 3) return [];
+  const out = [];
+  for (const r of DATA) {
+    if (norm(r.titulo).includes(q)) out.push({row: r});
+  }
+  return out;
+}
+
+// ─── Renderizado ─────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return (s || '').toString().replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderMatrizNaturales(grupos) {
+  if (grupos.length === 0 || grupos.every(g => g.personas.size === 0)) {
+    return '<div class="empty-msg">Sin resultados.</div>';
+  }
+  const headers = ['Persona buscada','Persona encontrada','Tipo de relación','Acta de Compromiso','Año','Categoría','Proyecto','Beneficiario','Estado del proceso','Estado específico'];
+  let html = '<table><thead><tr>';
+  headers.forEach((h,i) => html += '<th data-col="' + i + '" onclick="selectColumn(this)">' + h + '</th>');
+  html += '</tr></thead><tbody>';
+  for (const g of grupos) {
+    if (g.personas.size === 0) {
+      html += '<tr class="group-start"><td class="col-buscado">' + escapeHtml(g.label) + '</td><td colspan="9" class="empty-msg" style="padding:10px">Sin resultados para este nombre.</td></tr>';
+      continue;
+    }
+    // Total rows for this query (across all persona matches)
+    let totalRows = 0;
+    for (const [nombre, filas] of g.personas) totalRows += filas.length;
+    let firstQuery = true;
+    for (const [nombre, filas] of g.personas) {
+      let firstPerson = true;
+      for (const f of filas) {
+        const r = f.row;
+        const cls = procesoCls(r.proceso);
+        html += '<tr class="' + (firstQuery ? 'group-start' : '') + '">';
+        if (firstQuery) {
+          html += '<td class="col-buscado" rowspan="' + totalRows + '">' + escapeHtml(g.label) + '</td>';
+          firstQuery = false;
+        }
+        if (firstPerson) {
+          html += '<td class="col-persona" rowspan="' + filas.length + '">' + escapeHtml(nombre) + '</td>';
+          firstPerson = false;
+        }
+        html += '<td class="col-tipo">' + escapeHtml(f.roles.join(' / ')) + '</td>';
+        html += '<td>' + escapeHtml(r.acta) + '</td>';
+        html += '<td>' + escapeHtml(r.anio) + '</td>';
+        html += '<td>' + escapeHtml(r.categoria) + '</td>';
+        html += '<td>' + escapeHtml(r.titulo) + '</td>';
+        html += '<td>' + escapeHtml(r.beneficiario) + '</td>';
+        html += '<td class="' + cls + '">' + escapeHtml(r.proceso) + '</td>';
+        html += '<td class="' + cls + '">' + escapeHtml(r.estado) + '</td>';
+        html += '</tr>';
+      }
+    }
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+// Persona jurídica directa: agrupa por variante canónica de empresa (fix bug #5)
+function renderMatrizJurDirecta(grupos) {
+  if (grupos.length === 0 || grupos.every(g => g.filas.length === 0)) {
+    return '<div class="empty-msg">Sin resultados.</div>';
+  }
+  const headers = ['Empresa buscada','Acta de Compromiso','Año','Categoría','Proyecto','Estado del proceso','Estado específico'];
+  let html = '<table><thead><tr>';
+  headers.forEach((h,i) => html += `<th data-col="${i}" onclick="selectColumn(this)">${h}</th>`);
+  html += '</tr></thead><tbody>';
+  for (const g of grupos) {
+    if (g.filas.length === 0) {
+      html += `<tr class="group-start"><td class="col-buscado">${escapeHtml(g.label)}</td><td colspan="6" class="empty-msg" style="padding:10px">Sin resultados.</td></tr>`;
+      continue;
+    }
+    // --- FIX #5: group filas by exact beneficiario name ---
+    const varMap = new Map(); // beneficiario -> [filas]
+    for (const f of g.filas) {
+      const bene = f.row.beneficiario;
+      if (!varMap.has(bene)) varMap.set(bene, []);
+      varMap.get(bene).push(f);
+    }
+    let firstGroup = true;
+    for (const [bene, filas] of varMap) {
+      let firstRow = true;
+      for (const f of filas) {
+        const r = f.row;
+        const cls = procesoCls(r.proceso);
+        html += `<tr class="${firstGroup && firstRow ? 'group-start' : ''}">`;
+        if (firstRow) {
+          html += `<td class="col-buscado" rowspan="${filas.length}">${escapeHtml(bene)}</td>`;
+          firstRow = false;
+        }
+        html += `<td>${escapeHtml(r.acta)}</td>`;
+        html += `<td>${escapeHtml(r.anio)}</td>`;
+        html += `<td>${escapeHtml(r.categoria)}</td>`;
+        html += `<td>${escapeHtml(r.titulo)}</td>`;
+        html += `<td class="${cls}">${escapeHtml(r.proceso)}</td>`;
+        html += `<td class="${cls}">${escapeHtml(r.estado)}</td>`;
+        html += '</tr>';
+      }
+      firstGroup = false;
+    }
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderMatrizJurVinculada(grupos) {
+  if (grupos.length === 0 || grupos.every(g => g.filas.length === 0)) {
+    return '<div class="empty-msg">Sin resultados. Ninguna empresa tiene personas vinculadas con proyectos en falta.</div>';
+  }
+  const headers = ['Empresa buscada','Tipo de relación','Persona vinculada','Acta de Compromiso','Año','Categoría','Proyecto','Beneficiario del proyecto','Estado del proceso','Estado específico'];
+  let html = '<table><thead><tr>';
+  headers.forEach((h,i) => html += `<th data-col="${i}" onclick="selectColumn(this)">${h}</th>`);
+  html += '</tr></thead><tbody>';
+  for (const g of grupos) {
+    if (g.filas.length === 0) {
+      html += `<tr class="group-start"><td class="col-buscado">${escapeHtml(g.label)}</td><td colspan="9" class="empty-msg" style="padding:10px">Sin proyectos en falta vinculados.</td></tr>`;
+      continue;
+    }
+    let first = true;
+    for (const f of g.filas) {
+      const r = f.row;
+      const cls = 'alert';
+      html += `<tr class="${first ? 'group-start' : ''}">`;
+      if (first) {
+        html += `<td class="col-buscado" rowspan="${g.filas.length}">${escapeHtml(g.label)}</td>`;
+        first = false;
+      }
+      html += `<td class="col-tipo">${escapeHtml(f.roles.join(' / '))}</td>`;
+      html += `<td class="col-persona">${escapeHtml(f.persona)}</td>`;
+      html += `<td>${escapeHtml(r.acta)}</td>`;
+      html += `<td>${escapeHtml(r.anio)}</td>`;
+      html += `<td>${escapeHtml(r.categoria)}</td>`;
+      html += `<td>${escapeHtml(r.titulo)}</td>`;
+      html += `<td>${escapeHtml(r.beneficiario)}</td>`;
+      html += `<td class="${cls}">${escapeHtml(r.proceso)}</td>`;
+      html += `<td class="${cls}">${escapeHtml(r.estado)}</td>`;
+      html += '</tr>';
+    }
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderMatrizProyecto(grupos) {
+  if (grupos.length === 0 || grupos.every(g => g.filas.length === 0)) {
+    return '<div class="empty-msg">Sin resultados.</div>';
+  }
+  const headers = ['Título buscado','Beneficiario','Acta de Compromiso','Año','Categoría','Estado del proceso','Estado específico'];
+  let html = '<table><thead><tr>';
+  headers.forEach((h,i) => html += `<th data-col="${i}" onclick="selectColumn(this)">${h}</th>`);
+  html += '</tr></thead><tbody>';
+  for (const g of grupos) {
+    if (g.filas.length === 0) {
+      html += `<tr class="group-start"><td class="col-buscado">${escapeHtml(g.label)}</td><td colspan="6" class="empty-msg" style="padding:10px">Sin resultados.</td></tr>`;
+      continue;
+    }
+    let first = true;
+    for (const f of g.filas) {
+      const r = f.row;
+      const cls = procesoCls(r.proceso);
+      html += `<tr class="${first ? 'group-start' : ''}">`;
+      if (first) {
+        html += `<td class="col-buscado" rowspan="${g.filas.length}">${escapeHtml(r.titulo)}</td>`;
+        first = false;
+      }
+      html += `<td>${escapeHtml(r.beneficiario)}</td>`;
+      html += `<td>${escapeHtml(r.acta)}</td>`;
+      html += `<td>${escapeHtml(r.anio)}</td>`;
+      html += `<td>${escapeHtml(r.categoria)}</td>`;
+      html += `<td class="${cls}">${escapeHtml(r.proceso)}</td>`;
+      html += `<td class="${cls}">${escapeHtml(r.estado)}</td>`;
+      html += '</tr>';
+    }
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+// ─── Selección / copiado ─────────────────────────────────────────────────────
+function buildGrid(table) {
+  const rows = table.tBodies[0].rows;
+  const grid = [];
+  for (let r = 0; r < rows.length; r++) {
+    if (!grid[r]) grid[r] = [];
+    let logicalCol = 0;
+    const tds = rows[r].cells;
+    for (let c = 0; c < tds.length; c++) {
+      while (grid[r][logicalCol]) logicalCol++;
+      const td = tds[c];
+      const rs = td.rowSpan || 1;
+      const cs = td.colSpan || 1;
+      for (let dr = 0; dr < rs; dr++) {
+        for (let dc = 0; dc < cs; dc++) {
+          if (!grid[r+dr]) grid[r+dr] = [];
+          grid[r+dr][logicalCol+dc] = td;
+        }
+      }
+      logicalCol += cs;
+    }
+  }
+  return grid;
+}
+function selectColumn(thEl) { thEl.classList.toggle('col-selected'); }
+function clearColumnSelection(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.querySelectorAll('th.col-selected').forEach(th => th.classList.remove('col-selected'));
+}
+function copySelectedColumns(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const table = container.querySelector('table');
+  if (!table) { alert('Primero realiza una búsqueda.'); return; }
+  const selected = Array.from(table.querySelectorAll('th.col-selected'));
+  if (selected.length === 0) { alert('Selecciona al menos una columna (haz clic en su encabezado).'); return; }
+  const colIndices = selected.map(th => parseInt(th.dataset.col)).sort((a,b) => a-b);
+  const grid = buildGrid(table);
+  const headerTexts = colIndices.map(ci => { const th = selected.find(t => parseInt(t.dataset.col) === ci); return th ? th.innerText.trim() : ''; });
+  const lines = [headerTexts.join('\t')];
+  for (let r = 0; r < grid.length; r++) {
+    lines.push(colIndices.map(ci => { const td = grid[r] ? grid[r][ci] : null; return td ? td.innerText.trim() : ''; }).join('\t'));
+  }
+  clipCopy(lines.join('\n'), 'Columnas copiadas ✓');
+}
+function copyFullTable(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const table = container.querySelector('table');
+  if (!table) { alert('Primero realiza una búsqueda.'); return; }
+  const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
+  const grid = buildGrid(table);
+  const numCols = headers.length;
+  const lines = [headers.join('\t')];
+  for (let r = 0; r < grid.length; r++) {
+    const cells = [];
+    for (let c = 0; c < numCols; c++) {
+      const td = grid[r] ? grid[r][c] : null;
+      cells.push(td ? td.innerText.trim() : '');
+    }
+    lines.push(cells.join('\t'));
+  }
+  clipCopy(lines.join('\n'), 'Tabla completa copiada ✓');
+}
+function clipCopy(text, msg) {
+  navigator.clipboard.writeText(text).then(() => showToast(msg)).catch(() => {
+    const ta = document.createElement('textarea'); ta.value = text;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta); showToast(msg);
+  });
+}
+function showToast(msg) {
+  let toast = document.getElementById('copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copy-toast';
+    toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#28a745;color:white;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg; toast.style.opacity = '1';
+  setTimeout(() => { toast.style.opacity = '0'; }, 1800);
+}
+
+// ─── Handlers ────────────────────────────────────────────────────────────────
+function getQueries(cls) {
+  return Array.from(document.querySelectorAll('.' + cls))
+    .map(i => i.value.trim()).filter(v => v.length > 0);
+}
+
+function buscarNaturales() {
+  const queries = getQueries('q-nat');
+  const grupos = queries.map(q => ({label: q, personas: findProyectosByPersona(q)}));
+  document.getElementById('results-nat').innerHTML = renderMatrizNaturales(grupos);
+  let total = 0, alertas = 0;
+  for (const g of grupos) {
+    for (const [nombre, filas] of g.personas) {
+      total += filas.length;
+      alertas += filas.filter(f => isAlerta(f.row.proceso)).length;
+    }
+  }
+  document.getElementById('stats-nat').textContent = queries.length + ' búsqueda(s) · ' + total + ' proyecto(s) encontrado(s) · ' + alertas + ' en VENCIMIENTO/INCUMPLIMIENTO';
+}
+
+function buscarJuridicasDirecta() {
+  const queries = getQueries('q-jur-d');
+  const grupos = queries.map(q => ({label: q, filas: findProyectosByEmpresa(q)}));
+  document.getElementById('results-jur-d').innerHTML = renderMatrizJurDirecta(grupos);
+  const total = grupos.reduce((a,g) => a + g.filas.length, 0);
+  const alertas = grupos.reduce((a,g) => a + g.filas.filter(f => isAlerta(f.row.proceso)).length, 0);
+  document.getElementById('stats-jur-d').textContent = `${queries.length} búsqueda(s) · ${total} proyecto(s) directo(s) · ${alertas} en VENCIMIENTO/INCUMPLIMIENTO`;
+}
+
+function buscarJuridicasVinculada() {
+  const queries = getQueries('q-jur-v');
+  const grupos = queries.map(q => {
+    const proyectosEmpresa = DATA.filter(r => {
+      const isId = /^\d{11}$/.test(q.replace(/\s/g,''));
+      return isId ? matchId(q, r.ruc_pj) : matchEmpresa(q, r.beneficiario);
+    });
+    const personasMap = new Map();
+    for (const r of proyectosEmpresa) {
+      for (const campo of [r.rep_legal, r.director, r.responsable]) {
+        if (campo && campo.trim().length > 0) {
+          const k = norm(campo);
+          if (!k) continue;
+          if (!personasMap.has(k) || personasMap.get(k).length < campo.trim().length) {
+            personasMap.set(k, campo.trim());
+          }
+        }
+      }
+    }
+    const filasMap = new Map();
+    for (const [pkey, nombreOrig] of personasMap) {
+      for (let i = 0; i < DATA.length; i++) {
+        const r = DATA[i];
+        if (!isAlerta(r.proceso)) continue;
+        const roles = [];
+        if (matchNombre(nombreOrig, r.beneficiario)) roles.push('Beneficiario');
+        if (matchNombre(nombreOrig, r.rep_legal))    roles.push('Representante Legal');
+        if (matchNombre(nombreOrig, r.director))     roles.push('Director de la Obra');
+        if (matchNombre(nombreOrig, r.responsable))  roles.push('Responsable');
+        if (roles.length > 0) {
+          const candidatos = [];
+          if (matchNombre(nombreOrig, r.beneficiario)) candidatos.push(r.beneficiario);
+          if (matchNombre(nombreOrig, r.rep_legal))    candidatos.push(r.rep_legal);
+          if (matchNombre(nombreOrig, r.director))     candidatos.push(r.director);
+          if (matchNombre(nombreOrig, r.responsable))  candidatos.push(r.responsable);
+          const personaCanon = candidatos.reduce((a,b) => b.length > a.length ? b : a, nombreOrig);
+          const key = i + '|' + pkey;
+          if (!filasMap.has(key)) filasMap.set(key, {row: r, persona: personaCanon, roles});
+        }
+      }
+    }
+    const variantesEmp = [...new Set(proyectosEmpresa.map(r => r.beneficiario))];
+    const empresaCanon = variantesEmp.length === 0 ? q : (variantesEmp.length === 1 ? variantesEmp[0] : variantesEmp.join(' / '));
+    return {label: empresaCanon, filas: Array.from(filasMap.values())};
+  });
+  document.getElementById('results-jur-v').innerHTML = renderMatrizJurVinculada(grupos);
+  const total = grupos.reduce((a,g) => a + g.filas.length, 0);
+  document.getElementById('stats-jur-v').textContent = `${queries.length} búsqueda(s) · ${total} proyecto(s) en falta vinculados por personas`;
+}
+
+function buscarProyectos() {
+  const queries = getQueries('q-proy');
+  const grupos = queries.map(q => ({label: q, filas: findProyectosByTitulo(q)}));
+  document.getElementById('results-proy').innerHTML = renderMatrizProyecto(grupos);
+  const total = grupos.reduce((a,g) => a + g.filas.length, 0);
+  const alertas = grupos.reduce((a,g) => a + g.filas.filter(f => isAlerta(f.row.proceso)).length, 0);
+  document.getElementById('stats-proy').textContent = `${queries.length} búsqueda(s) · ${total} estímulo(s) encontrado(s) · ${alertas} en VENCIMIENTO/INCUMPLIMIENTO`;
+}
+
+function limpiar(prefix) {
+  const map = {'nat':'q-nat','jur-d':'q-jur-d','jur-v':'q-jur-v','proy':'q-proy'};
+  document.querySelectorAll('.' + map[prefix]).forEach(i => i.value = '');
+  const resMap = {'nat':'results-nat','jur-d':'results-jur-d','jur-v':'results-jur-v','proy':'results-proy'};
+  const stMap  = {'nat':'stats-nat','jur-d':'stats-jur-d','jur-v':'stats-jur-v','proy':'stats-proy'};
+  document.getElementById(resMap[prefix]).innerHTML = '<div class="empty-msg">Ingresa uno o más valores y presiona Buscar.</div>';
+  document.getElementById(stMap[prefix]).textContent = '';
+}
+
+// ─── Tabs ────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+}));
+document.querySelectorAll('.subtab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.subtab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('subpanel-directa').style.display   = t.dataset.subtab === 'directa'   ? 'block' : 'none';
+  document.getElementById('subpanel-vinculada').style.display = t.dataset.subtab === 'vinculada' ? 'block' : 'none';
+}));
+document.querySelectorAll('.q-nat').forEach(i   => i.addEventListener('keydown', e => { if (e.key === 'Enter') buscarNaturales(); }));
+document.querySelectorAll('.q-jur-d').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') buscarJuridicasDirecta(); }));
+document.querySelectorAll('.q-jur-v').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') buscarJuridicasVinculada(); }));
+document.querySelectorAll('.q-proy').forEach(i  => i.addEventListener('keydown', e => { if (e.key === 'Enter') buscarProyectos(); }));
+
+// ─── Paste from Excel ────
+function setupPasteHandler(cls) {
+  var inputs = Array.from(document.querySelectorAll('.' + cls));
+  inputs.forEach(function(input, idx) {
+    input.addEventListener('paste', function(e) {
+      var pasted = (e.clipboardData || window.clipboardData).getData('text');
+      var lines = pasted.split(new RegExp('\r?\n')).map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+      if (lines.length > 1) {
+        e.preventDefault();
+        for (var i = 0; i < lines.length && (idx + i) < inputs.length; i++) {
+          inputs[idx + i].value = lines[i];
+        }
+      }
+    });
+  });
+}
+setupPasteHandler('q-nat');
+setupPasteHandler('q-jur-d');
+setupPasteHandler('q-jur-v');
+setupPasteHandler('q-proy');
+</script>
+
+<!-- ============ PANEL PROYECTOS ============ -->
+<div class="panel" id="panel-proyectos">
+  <div class="descripcion">
+    <strong>¿Qué hace esta búsqueda?</strong> Busca proyectos beneficiarios por título. Un mismo proyecto puede haber recibido más de un estímulo económico. Esta búsqueda devuelve todos los estímulos asociados a ese título e identifica en rojo aquellos en VENCIMIENTO o INCUMPLIMIENTO, y en amarillo los que están en REVISIÓN.
+  </div>
+  <div class="search-box">
+    <div class="search-grid">
+      <input type="text" class="q-proy" placeholder="Título 1 (ej: La prueba)">
+      <input type="text" class="q-proy" placeholder="Título 2">
+      <input type="text" class="q-proy" placeholder="Título 3">
+      <input type="text" class="q-proy" placeholder="Título 4">
+      <input type="text" class="q-proy" placeholder="Título 5">
+      <input type="text" class="q-proy" placeholder="Título 6">
+      <input type="text" class="q-proy" placeholder="Título 7">
+      <input type="text" class="q-proy" placeholder="Título 8">
+      <input type="text" class="q-proy" placeholder="Título 9">
+      <input type="text" class="q-proy" placeholder="Título 10">
+    </div>
+    <button class="btn" onclick="buscarProyectos()">Buscar</button>
+    <button class="btn btn-clear" onclick="limpiar('proy')">Limpiar</button>
+    <div class="meta">Match: el texto buscado debe estar contenido en el título del proyecto (sin distinguir tildes/mayúsculas).</div>
+  </div>
+  <div class="col-instructions">💡 <strong>Copiar datos:</strong> Haz clic en los encabezados de columna para seleccionarlos (se ponen verdes). Luego usa los botones de copiado.</div>
+  <div class="copy-bar">
+    <button onclick="copySelectedColumns('results-proy')">📋 Copiar columnas seleccionadas</button>
+    <button onclick="copyFullTable('results-proy')">📊 Copiar toda la tabla</button>
+    <button onclick="clearColumnSelection('results-proy')">✕ Deseleccionar</button>
+  </div>
+  <div class="stats" id="stats-proy"></div>
+  <div class="results" id="results-proy"><div class="empty-msg">Ingresa uno o más títulos y presiona Buscar.</div></div>
+</div>
+
+</body>
+</html>
